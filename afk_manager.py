@@ -70,7 +70,7 @@ async def check_inactivity():
 @client.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     # ユーザーがミュート部屋から退出したかどうかを確認
-    afk_channel = discord.utils.get(member.guild.voice_channels, name="ミュート部屋")
+    afk_channel = discord.utils.get(member.guild.voice_channels, id=AFK_CHANNEL_ID)
 
     # ユーザーがミュート部屋を離れた場合
     if before.channel == afk_channel and after.channel != afk_channel:
@@ -87,7 +87,7 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
         return
 
     # ボイスチャンネルに接続している場合、"ミュート部屋"に移動
-    afk_channel = discord.utils.get(interaction.guild.voice_channels, name="ミュート部屋")
+    afk_channel = discord.utils.get(interaction.guild.voice_channels, id=AFK_CHANNEL_ID)
 
     if afk_channel is None:
         await interaction.response.send_message("ミュート部屋が見つかりません。", ephemeral=True)
