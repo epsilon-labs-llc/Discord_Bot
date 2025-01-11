@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+import fcntl
 
 # ログ設定
 logging.basicConfig(
@@ -17,6 +18,7 @@ logging.basicConfig(
 
 # タイムゾーン設定 (Asia/Tokyo)
 JST = timezone(timedelta(hours=9))
+logging.info(f"Set time zone: {JST}")
 
 # .envファイルの内容を読み込み
 load_dotenv()
@@ -76,14 +78,18 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     if before.channel == afk_channel and after.channel != afk_channel:
         # サーバーミュートを解除
         await member.edit(mute=False)
-        print(f"{member.name}さんのサーバーミュートを解除しました。")
+        logging.info(f"{member.name} さんがミュート部屋を離れ、サーバーミュートが解除されました。")
+    elif after.channel:
+        user_activity[member.id] = asyncio.get_event_loop().time()
+        logging.info(f"{member.name} さんがボイスチャンネルに参加しました: {after.channel.name}")
 
 # スラッシュコマンド: /ミュート
-@tree.command(name="ミュート", description="指定したユーザーをミュート部屋に移動します")
+@tree.command(name="mute", description="指定したユーザーをミュート部屋に移動します")
 async def mute_user(interaction: discord.Interaction, user: discord.Member):
     # ユーザーがボイスチャンネルに接続しているか確認
     if user.voice is None:
         await interaction.response.send_message("指定されたユーザーはボイスチャンネルに接続していません。", ephemeral=True)
+        logging.info(f"{interaction.user.name} さんがミュート操作を試みましたが、指定されたユーザーは接続していませんでした。")
         return
 
     # ボイスチャンネルに接続している場合、"ミュート部屋"に移動
@@ -91,6 +97,7 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
 
     if afk_channel is None:
         await interaction.response.send_message("ミュート部屋が見つかりません。", ephemeral=True)
+        logging.warning(f"{interaction.user.name} さんがミュート操作を試みましたが、ミュート部屋が見つかりませんでした。")
         return
 
     # "ミュート部屋"に移動
@@ -99,6 +106,21 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
     # 応答がまだ送られていない場合のみ送るようにする
     if not interaction.response.is_done():
         await interaction.response.send_message(f"{user.name}さんをミュート部屋に移動し、ミュートしました。", ephemeral=True)
+        logging.info(f"{interaction.user.name} さんが {user.name} さんをミュート部屋に移動しました。")
 
-# ボットを実行
-client.run(AFK_BOT_TOKEN)
+# 二重起動を禁止するためのファイルロック処理
+if __name__ == "__main__":
+    lockfile_path = "lockfile"
+    with open(lockfile_path, "w") as lockfile:
+        try:
+            fcntl.flock(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logging.info("ファイルロックが正常に取得されました。ボットを起動します。")
+        except IOError:
+            logging.error("ボットはすでに実行中です。起動を中止します。")
+            exit(1)
+
+        try:
+            client.run(AFK_BOT_TOKEN) # ボットを実行
+        finally:
+            fcntl.flock(lockfile, fcntl.LOCK_UN)  # ロック解除
+            logging.info("ファイルロックを解除しました。")

@@ -1,20 +1,28 @@
 import discord
-from discord import commands
+from discord.ext import tasks
+from discord import app_commands
 import random
 import os
 from dotenv import load_dotenv
 import logging
 import json
+from datetime import datetime, timezone, timedelta
 
 # ログ設定
 logging.basicConfig(
     filename="collector_bot.log",
     level=logging.INFO,
-    format="%(asctime)s:%(levelname)s:%(message)s"
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# .envファイル読み込み
+# タイムゾーン設定 (Asia/Tokyo)
+JST = timezone(timedelta(hours=9))
+
+# .envファイルの内容を読み込み
 load_dotenv()
+
+# 環境変数から取得
 TOKEN = os.getenv("DISCORD_TOKEN")
 RARITY_PROBABILITIES = {
     "normal": float(os.getenv("RARITY_NORMAL", 0.7)),
@@ -24,8 +32,9 @@ RARITY_PROBABILITIES = {
 
 # Bot設定
 intents = discord.Intents.default()
-intents.messages = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+intents.message_content = True
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 # データ保存ファイル
 DATA_FILE = "collections.json"
@@ -55,12 +64,12 @@ characters = {
     ]
 }
 
-# ヘルパー関数: データ保存
+# データ保存
 def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=4)
 
-# ヘルパー関数: ランダムキャラクター取得
+# ランダムキャラクター取得
 def get_random_character():
     rarity = random.choices(
         ["normal", "rare", "super_rare"],
@@ -74,8 +83,14 @@ def get_random_character():
     character = random.choice(characters[rarity])
     return rarity, character
 
+@client.event
+async def on_ready():
+    logging.info(f"Bot is online! Logged in as {client.user}")
+    await tree.sync()
+    logging.info("Slash commands synced.")
+
 # コマンド: /collect daily
-@bot.command(name="collect")
+@tree.command(name="collect")
 async def collect(ctx, mode: str):
     user_id = str(ctx.author.id)
     if mode == "daily":
@@ -107,10 +122,10 @@ async def collect(ctx, mode: str):
         await ctx.send("利用可能なモードは: `daily` です。")
 
 # 起動時イベント
-@bot.event
+@client.event
 async def on_ready():
-    logging.info(f"Bot logged in as {bot.user}")
-    print(f"Bot logged in as {bot.user}")
+    logging.info(f"Bot logged in as {client.user}")
+    print(f"Bot logged in as {client.user}")
 
 # Botの起動
-bot.run(TOKEN)
+client.run(TOKEN)
