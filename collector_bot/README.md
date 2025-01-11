@@ -35,7 +35,7 @@
 # .env ファイルのテンプレ
 
 # ボットのトークン
-DISCORD_TOKEN=your-bot-token-here
+DISCORD_BOT_TOKEN=your-bot-token-here
 
 # アイテムのレアリティ確率設定
 RARITY_NORMAL=0.7

@@ -23,12 +23,12 @@ JST = timezone(timedelta(hours=9))
 load_dotenv()
 
 # 環境変数から取得
-TOKEN = os.getenv("DISCORD_TOKEN")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 RARITY_PROBABILITIES = {
     "normal": float(os.getenv("RARITY_NORMAL", 0.7)),
     "rare": float(os.getenv("RARITY_RARE", 0.2)),
     "super_rare": float(os.getenv("RARITY_SUPER_RARE", 0.1))
-}
+} 
 
 # Bot設定
 intents = discord.Intents.default()
@@ -83,14 +83,16 @@ def get_random_character():
     character = random.choice(characters[rarity])
     return rarity, character
 
+# 起動時イベント
 @client.event
 async def on_ready():
     logging.info(f"Bot is online! Logged in as {client.user}")
     await tree.sync()
     logging.info("Slash commands synced.")
+    
 
 # コマンド: /collect daily
-@tree.command(name="collect")
+@tree.command(name="collect", description="毎日1枚のキャラクターをランダムで獲得します")
 async def collect(ctx, mode: str):
     user_id = str(ctx.author.id)
     if mode == "daily":
@@ -121,11 +123,5 @@ async def collect(ctx, mode: str):
     else:
         await ctx.send("利用可能なモードは: `daily` です。")
 
-# 起動時イベント
-@client.event
-async def on_ready():
-    logging.info(f"Bot logged in as {client.user}")
-    print(f"Bot logged in as {client.user}")
-
 # Botの起動
-client.run(TOKEN)
+client.run(BOT_TOKEN)

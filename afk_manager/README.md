@@ -36,8 +36,8 @@
 # AFKユーザーを移動させるチャンネルID
 AFK_CHANNEL_ID=your-afk-channel-id-here
 
-# ボットのトークン (AFKボット用)
-AFK_BOT_TOKEN=your-bot-token-here
+# ボットのトークン
+DISCORD_BOT_TOKEN=your-bot-token-here
 
 # AFKとみなす時間（秒単位）
 INACTIVITY_TIME=900  # 900秒 = 15分

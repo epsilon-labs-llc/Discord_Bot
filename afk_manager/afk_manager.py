@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import os
 import logging
 from datetime import datetime, timezone, timedelta
-import fcntl
 
 # ログ設定
 logging.basicConfig(
@@ -26,7 +25,7 @@ load_dotenv()
 # 環境変数から取得
 AFK_CHANNEL_ID = int(os.getenv("AFK_CHANNEL_ID"))
 INACTIVITY_TIME = int(os.getenv("INACTIVITY_TIME", 900))  # デフォルト15分
-AFK_BOT_TOKEN = os.getenv("AFK_BOT_TOKEN")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 intents = discord.Intents.default()
 intents.members = True
@@ -37,6 +36,7 @@ tree = app_commands.CommandTree(client)
 # ユーザーのアクティビティ記録を保持する辞書
 user_activity = {}
 
+# 起動時イベント
 @client.event
 async def on_ready():
     await client.change_presence(activity=discord.Game("AFKユーザーを監視中..."))
@@ -84,7 +84,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         logging.info(f"{member.name} さんがボイスチャンネルに参加しました: {after.channel.name}")
 
 # スラッシュコマンド: /ミュート
-@tree.command(name="mute", description="指定したユーザーをミュート部屋に移動します")
+@tree.command(name="ミュート", description="指定したユーザーをミュート部屋に移動します")
 async def mute_user(interaction: discord.Interaction, user: discord.Member):
     # ユーザーがボイスチャンネルに接続しているか確認
     if user.voice is None:
@@ -108,19 +108,5 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
         await interaction.response.send_message(f"{user.name}さんをミュート部屋に移動し、ミュートしました。", ephemeral=True)
         logging.info(f"{interaction.user.name} さんが {user.name} さんをミュート部屋に移動しました。")
 
-# 二重起動を禁止するためのファイルロック処理
-if __name__ == "__main__":
-    lockfile_path = "lockfile"
-    with open(lockfile_path, "w") as lockfile:
-        try:
-            fcntl.flock(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            logging.info("ファイルロックが正常に取得されました。ボットを起動します。")
-        except IOError:
-            logging.error("ボットはすでに実行中です。起動を中止します。")
-            exit(1)
-
-        try:
-            client.run(AFK_BOT_TOKEN) # ボットを実行
-        finally:
-            fcntl.flock(lockfile, fcntl.LOCK_UN)  # ロック解除
-            logging.info("ファイルロックを解除しました。")
+# ボットを実行
+client.run(BOT_TOKEN)
