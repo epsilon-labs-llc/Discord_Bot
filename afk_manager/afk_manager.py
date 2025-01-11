@@ -15,10 +15,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# タイムゾーン設定 (Asia/Tokyo)
-JST = timezone(timedelta(hours=9))
-logging.info(f"Set time zone: {JST}")
-
 # .envファイルの内容を読み込み
 load_dotenv()
 
@@ -54,7 +50,7 @@ async def check_inactivity():
 
     afk_channel = guild.get_channel(AFK_CHANNEL_ID)
     if not afk_channel:
-        logging.warning("ミュート部屋が見つかりません")
+        logging.warning("AFK channel not found")
         return
 
     for voice_channel in guild.voice_channels:
@@ -67,7 +63,7 @@ async def check_inactivity():
                 await member.move_to(afk_channel)
                 await member.edit(mute=True)  # サーバーミュートを適用
                 user_activity.pop(member.id, None)
-                logging.info(f"{member.display_name} さんをミュート部屋に移動し、サーバーミュートしました。")
+                logging.info(f"{member.display_name} has been moved to the AFK channel and muted.")
 
 @client.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -76,12 +72,14 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 
     # ユーザーがミュート部屋を離れた場合
     if before.channel == afk_channel and after.channel != afk_channel:
-        # サーバーミュートを解除
-        await member.edit(mute=False)
-        logging.info(f"{member.name} さんがミュート部屋を離れ、サーバーミュートが解除されました。")
+        if member.voice is not None:  # ユーザーがボイスチャンネルに接続しているか確認
+            # サーバーミュートを解除
+            await member.edit(mute=False)
+            logging.info(f"{member.name} has left the AFK channel, and the mute has been lifted.")
     elif after.channel:
         user_activity[member.id] = asyncio.get_event_loop().time()
-        logging.info(f"{member.name} さんがボイスチャンネルに参加しました: {after.channel.name}")
+        logging.info(f"{member.name} has joined the voice channel: {after.channel.name}")
+   
 
 # スラッシュコマンド: /ミュート
 @tree.command(name="ミュート", description="指定したユーザーをミュート部屋に移動します")
@@ -89,7 +87,7 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
     # ユーザーがボイスチャンネルに接続しているか確認
     if user.voice is None:
         await interaction.response.send_message("指定されたユーザーはボイスチャンネルに接続していません。", ephemeral=True)
-        logging.info(f"{interaction.user.name} さんがミュート操作を試みましたが、指定されたユーザーは接続していませんでした。")
+        logging.info(f"{interaction.user.name} attempted to mute, but the specified user is not connected.")
         return
 
     # ボイスチャンネルに接続している場合、"ミュート部屋"に移動
@@ -97,7 +95,7 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
 
     if afk_channel is None:
         await interaction.response.send_message("ミュート部屋が見つかりません。", ephemeral=True)
-        logging.warning(f"{interaction.user.name} さんがミュート操作を試みましたが、ミュート部屋が見つかりませんでした。")
+        logging.warning(f"{interaction.user.name} attempted to mute, but the AFK channel was not found.")
         return
 
     # "ミュート部屋"に移動
@@ -106,7 +104,7 @@ async def mute_user(interaction: discord.Interaction, user: discord.Member):
     # 応答がまだ送られていない場合のみ送るようにする
     if not interaction.response.is_done():
         await interaction.response.send_message(f"{user.name}さんをミュート部屋に移動し、ミュートしました。", ephemeral=True)
-        logging.info(f"{interaction.user.name} さんが {user.name} さんをミュート部屋に移動しました。")
+        logging.info(f"{interaction.user.name} has moved {user.name} to the AFK channel.")
 
 # ボットを実行
 client.run(BOT_TOKEN)
