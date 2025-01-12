@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import logging
 import json
 from datetime import datetime, timezone, timedelta
+import pytz
 
 # ログ設定
 logging.basicConfig(
@@ -15,6 +16,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+# タイムゾーン設定
+JST = pytz.timezone("Asia/Tokyo")
 
 # .envファイルの内容を読み込み
 load_dotenv()
@@ -40,7 +44,7 @@ if os.path.exists(DATA_FILE):
     with open(DATA_FILE, "r", encoding="utf-8") as file:
         data = json.load(file)
 else:
-    data = {"collections": {}, "login_streaks": {}}
+    data = {"collections": {}, "login_streaks": {}, "last_used": {}}
 
 # キャラクターリスト（名前と画像パス）
 characters = {
@@ -110,13 +114,36 @@ rarity_dict = {
 @tree.command(name="デイリー", description="毎日1枚のキャラクターをランダムで獲得します")
 async def collect(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    
-    # ログインボーナス処理
-    streak = data["login_streaks"].get(user_id, 0) + 1
-    data["login_streaks"][user_id] = streak
+    now = datetime.now(JST)  # 現在時刻を東京時間で取得
 
+    # 前回使用時刻の確認
+    last_used_str = data.setdefault("last_used", {}).get(user_id)  # "last_used"がなければ初期化
+    if last_used_str:
+        last_used = datetime.fromisoformat(last_used_str)
+        time_diff = now - last_used
+        if time_diff < timedelta(hours=24):
+            # 再使用までの残り時間を計算
+            remaining_time = timedelta(hours=24) - time_diff
+            remaining_hours = remaining_time.seconds // 3600  # 残り時間を時間単位で計算
+            logging.info(f"User {user_id} attempted to use the daily command but needs to wait {remaining_hours} more hours.")
+            await interaction.response.send_message(
+                f"デイリーコマンドはまだ使用できません。あと **{remaining_hours}時間後** に使用できます。"
+            )
+            return
+
+    # 新しい使用時刻を記録
+    data["last_used"][user_id] = now.isoformat()
+    logging.info(f"User {user_id} used the daily command at {now.isoformat()}.")
+
+    # ログインボーナス処理
+    streak = data.setdefault("login_streaks", {}).get(user_id, 0) + 1  # "login_streaks"がなければ初期化
+    data["login_streaks"][user_id] = streak
+    logging.info(f"User {user_id} login streak updated to {streak} days.")
+
+    # キャラクター収集
     rarity, character = get_random_character()
-    data["collections"].setdefault(user_id, []).append(character["name"])
+    data.setdefault("collections", {}).setdefault(user_id, []).append(character["name"])  # "collections"がなければ初期化
+    logging.info(f"User {user_id} collected a character: {character['name']} (Rarity: {rarity}).")
 
     save_data()
 
