@@ -97,6 +97,20 @@ def get_random_character():
     character = random.choice(characters[rarity])
     return rarity, character
 
+# コレクション保存の変更
+def add_to_collection(user_id, rarity, character_name):
+    # ユーザーのコレクションを取得
+    user_collection = data["collections"].setdefault(user_id, {"normal": [], "rare": [], "super_rare": []})
+    
+    # 既存のキャラクターをチェックして、数量を増加させる
+    for character in user_collection[rarity]:
+        if character["name"] == character_name:
+            character["quantity"] += 1
+            return
+    
+    # 新しいキャラクターを追加
+    user_collection[rarity].append({"name": character_name, "quantity": 1})
+
 # 起動時イベント
 @client.event
 async def on_ready():
@@ -155,7 +169,7 @@ async def collect(interaction: discord.Interaction):
 
     # キャラクター収集
     rarity, character = get_random_character()
-    data.setdefault("collections", {}).setdefault(user_id, []).append(character["name"])  # "collections"がなければ初期化
+    add_to_collection(user_id, rarity, character["name"])  # コレクションにキャラクターを追加
     logging.info(f"User {user_id} collected a character: {character['name']} (Rarity: {rarity}).")
 
     save_data()
@@ -189,37 +203,45 @@ async def collection(interaction: discord.Interaction, action: str):
     user_id = str(interaction.user.id)
 
     if action == "表示":
-        user_collection = data["collections"].get(user_id, [])
-        if not user_collection:
+        user_collection = data["collections"].get(user_id, {"normal": [], "rare": [], "super_rare": []})
+
+        # レアリティ順に表示
+        collection_text = ""
+        for rarity in ["super_rare", "rare", "normal"]:
+            if user_collection[rarity]:
+                collection_text += f"\n**{rarity_dict[rarity]}**\n"
+                for character in user_collection[rarity]:
+                    collection_text += f"{character['name']}: {character['quantity']}個\n"
+
+        if not collection_text:
             await interaction.response.send_message("あなたのコレクションは空です。デイリーコマンドでキャラクターを集めましょう！")
-            return
-
-        # アイテムごとの所持数を集計
-        collection_count = {}
-        for item in user_collection:
-            collection_count[item] = collection_count.get(item, 0) + 1
-
-        # 表示用のテキスト生成
-        collection_text = "\n".join([f"{item}: {count}個" for item, count in collection_count.items()])
-        await interaction.response.send_message(f"**あなたのコレクション:**\n{collection_text}")
+        else:
+            await interaction.response.send_message(f"**あなたのコレクション:**\n{collection_text}")
 
         logging.info(f"User {user_id} checked their collection.")
+    
     elif action == "リーダーボード":
-        leaderboard = [
-            (user_id, len(items))
-            for user_id, items in data["collections"].items()
-        ]
-        # 所持数で降順ソート
-        leaderboard.sort(key=lambda x: x[1], reverse=True)
+        leaderboard = []
+
+        for user_id, user_collection in data["collections"].items():
+            # スーパーレア、レア、ノーマルの順にソート
+            super_rare_count = sum(c["quantity"] for c in user_collection["super_rare"])
+            rare_count = sum(c["quantity"] for c in user_collection["rare"])
+            normal_count = sum(c["quantity"] for c in user_collection["normal"])
+            total = (super_rare_count, rare_count, normal_count)
+            leaderboard.append((user_id, total))
+
+        # ソート (スーパーレア → レア → ノーマルの順)
+        leaderboard.sort(key=lambda x: (x[1][0], x[1][1], x[1][2]), reverse=True)
 
         # 表示用テキスト生成
         leaderboard_text = "\n".join(
-            [f"{index+1}位: <@{user_id}> - {count}個" for index, (user_id, count) in enumerate(leaderboard)]
+            [f"{index+1}位: <@{user_id}> - スーパーレア: {total[0]}個, レア: {total[1]}個, ノーマル: {total[2]}個"
+             for index, (user_id, total) in enumerate(leaderboard)]
         )
         await interaction.response.send_message(f"**コレクションリーダーボード:**\n{leaderboard_text}")
 
         logging.info("Leaderboard command executed.")
-
 
 # Botの起動
 client.run(BOT_TOKEN)
