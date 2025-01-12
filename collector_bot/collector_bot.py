@@ -106,8 +106,8 @@ rarity_dict = {
     "super_rare": "スーパーレア"
 }
 
-# デイリーコレクトコマンド
-@tree.command(name="デイリーコレクト", description="デイリーコレクトコマンド")
+# コマンド: /デイリー
+@tree.command(name="デイリー", description="毎日1枚のキャラクターをランダムで獲得します")
 async def collect(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
