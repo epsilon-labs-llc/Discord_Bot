@@ -16,9 +16,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# タイムゾーン設定 (Asia/Tokyo)
-JST = timezone(timedelta(hours=9))
-
 # .envファイルの内容を読み込み
 load_dotenv()
 
@@ -48,20 +45,33 @@ else:
 # キャラクターリスト（名前と画像パス）
 characters = {
     "normal": [
-        {"name": "スライム", "image": "imgs/slime.png"},
-        {"name": "スケルトン", "image": "imgs/skeleton.png"},
-        {"name": "ゴブリン", "image": "imgs/goblin.png"}
+        {"name": "スライム", "image": "imgs/slime.gif"},
+        {"name": "ゴブリン", "image": "imgs/goblin.gif"},
+        {"name": "ダイコーン", "image": "imgs/daikon.gif"},
+        {"name": "オーク", "image": "imgs/orc.gif"},
+        {"name": "デビルカバ", "image": "imgs/devil-hippo.gif"},
+        {"name": "ゴーレム", "image": "imgs/golem.gif"},
+        {"name": "ファイヤー鶏", "image": "imgs/fire-chicken.gif"},
+        {"name": "銀狼", "image": "imgs/silver-wolf.gif"},
+        {"name": "ゾンビ", "image": "imgs/zombie.gif"},
+        {"name": "鳥", "image": "imgs/bird.gif"},
     ],
     "rare": [
-        {"name": "フェニックス", "image": "imgs/phoenix.png"},
-        {"name": "グリフォン", "image": "imgs/griffon.png"},
-        {"name": "ユニコーン", "image": "imgs/unicorn.png"}
+        {"name": "ワイバーン", "image": "imgs/wyvern.gif"},
+        {"name": "ケロべロス", "image": "imgs/cerberus.gif"},
+        {"name": "ワーウルフ", "image": "imgs/werewolf.gif"},
+        {"name": "ミノタウロス", "image": "imgs/minotaur.gif"},
+        {"name": "炎馬", "image": "imgs/flame-horse.gif"},
+        {"name": "氷馬", "image": "imgs/ice-horse.gif"},
+        {"name": "天狗", "image": "imgs/tengu.gif"},
     ],
     "super_rare": [
-        {"name": "ドラゴン", "image": "imgs/dragon.png"},
-        {"name": "神獣ケルベロス", "image": "imgs/cerberus.png"},
-        {"name": "古代巨人", "image": "imgs/giant.png"}
-    ]
+        {"name": "ドラゴン", "image": "imgs/dragon.gif"},
+        {"name": "グリフォン", "image": "imgs/griffon.gif"},
+        {"name": "白虎", "image": "imgs/white-tiger.gif"},
+        {"name": "八岐大蛇", "image": "imgs/yamata-no-orochi.gif"},
+        {"name": "朱雀", "image": "imgs/vermilion-bird.gif"},
+    ],
 }
 
 # データ保存
@@ -89,39 +99,42 @@ async def on_ready():
     logging.info(f"Bot is online! Logged in as {client.user}")
     await tree.sync()
     logging.info("Slash commands synced.")
+
+rarity_dict = {
+    "normal": "ノーマル",
+    "rare": "レア",
+    "super_rare": "スーパーレア"
+}
+
+# デイリーコレクトコマンド
+@tree.command(name="デイリーコレクト", description="デイリーコレクトコマンド")
+async def collect(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
     
+    # ログインボーナス処理
+    streak = data["login_streaks"].get(user_id, 0) + 1
+    data["login_streaks"][user_id] = streak
 
-# コマンド: /collect daily
-@tree.command(name="collect", description="毎日1枚のキャラクターをランダムで獲得します")
-async def collect(ctx, mode: str):
-    user_id = str(ctx.author.id)
-    if mode == "daily":
-        # ログインボーナス処理
-        streak = data["login_streaks"].get(user_id, 0) + 1
-        data["login_streaks"][user_id] = streak
+    rarity, character = get_random_character()
+    data["collections"].setdefault(user_id, []).append(character["name"])
 
-        rarity, character = get_random_character()
-        data["collections"].setdefault(user_id, []).append(character["name"])
+    save_data()
 
-        save_data()
-
-        # Embedでアイテム情報を表示
-        embed = discord.Embed(
-            title=f"今日のキャラクター: {character['name']}",
-            description=f"レアリティ: **{rarity.capitalize()}**\nログイン連続日数: {streak}日",
-            color=0xFFD700 if rarity == "super_rare" else 0x1E90FF if rarity == "rare" else 0x90EE90
-        )
-        file_path = character["image"]
-        if os.path.exists(file_path):
-            file = discord.File(file_path, filename="image.png")
-            embed.set_image(url="attachment://image.png")
-            await ctx.send(file=file, embed=embed)
-        else:
-            await ctx.send(f"{character['name']} の画像が見つかりませんでした。")
-        
-        logging.info(f"User {user_id} collected {character['name']} ({rarity}) on day {streak}")
+    # Embedでアイテム情報を表示
+    embed = discord.Embed(
+        title=f"今日のキャラクター: {character['name']}",
+        description=f"レアリティ: **{rarity_dict[rarity]}**\nログイン連続日数: {streak}日",
+        color=0xFFD700 if rarity == "super_rare" else 0x1E90FF if rarity == "rare" else 0x90EE90
+    )
+    file_path = character["image"]
+    if os.path.exists(file_path):
+        file = discord.File(file_path, filename="image.png")
+        embed.set_thumbnail(url="attachment://image.png")
+        await interaction.response.send_message(file=file, embed=embed)
     else:
-        await ctx.send("利用可能なモードは: `daily` です。")
+        await interaction.response.send_message(f"画像が見つかりませんでした。")
+
+    logging.info(f"User {user_id} collected {character['name']} ({rarity}) on day {streak}")
 
 # Botの起動
 client.run(BOT_TOKEN)
