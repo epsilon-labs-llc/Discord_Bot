@@ -110,6 +110,19 @@ rarity_dict = {
     "super_rare": "スーパーレア"
 }
 
+# コマンド: /ヘルプ
+@tree.command(name="ヘルプ", description="すべてのコマンドとその説明を表示します")
+async def help_command(interaction: discord.Interaction):
+    commands_info = """
+        **利用可能なコマンド一覧**
+        `/デイリー` - 毎日1枚のキャラクターをランダムで獲得します。
+        `/コレクション 表示` - あなたのコレクションを表示します。同じキャラクターの所持数も確認できます。
+        `/コレクション リーダーボード` - 全メンバーのコレクション所持数をランキング形式で表示します。
+        `ヘルプ` - すべてのコマンドとその説明を表示します。
+    """
+    await interaction.response.send_message(commands_info)
+    logging.info("Help command executed.")
+
 # コマンド: /デイリー
 @tree.command(name="デイリー", description="毎日1枚のキャラクターをランダムで獲得します")
 async def collect(interaction: discord.Interaction):
@@ -162,6 +175,51 @@ async def collect(interaction: discord.Interaction):
         await interaction.response.send_message(f"画像が見つかりませんでした。")
 
     logging.info(f"User {user_id} collected {character['name']} ({rarity}) on day {streak}")
+
+# コマンド: /コレクション
+@tree.command(name="コレクション", description="コレクション関連のコマンドです")
+@app_commands.describe(action="表示またはリーダーボードを選択")
+@app_commands.choices(
+    action=[
+        app_commands.Choice(name="表示", value="表示"),
+        app_commands.Choice(name="リーダーボード", value="リーダーボード")
+    ]
+)
+async def collection(interaction: discord.Interaction, action: str):
+    user_id = str(interaction.user.id)
+
+    if action == "表示":
+        user_collection = data["collections"].get(user_id, [])
+        if not user_collection:
+            await interaction.response.send_message("あなたのコレクションは空です。デイリーコマンドでキャラクターを集めましょう！")
+            return
+
+        # アイテムごとの所持数を集計
+        collection_count = {}
+        for item in user_collection:
+            collection_count[item] = collection_count.get(item, 0) + 1
+
+        # 表示用のテキスト生成
+        collection_text = "\n".join([f"{item}: {count}個" for item, count in collection_count.items()])
+        await interaction.response.send_message(f"**あなたのコレクション:**\n{collection_text}")
+
+        logging.info(f"User {user_id} checked their collection.")
+    elif action == "リーダーボード":
+        leaderboard = [
+            (user_id, len(items))
+            for user_id, items in data["collections"].items()
+        ]
+        # 所持数で降順ソート
+        leaderboard.sort(key=lambda x: x[1], reverse=True)
+
+        # 表示用テキスト生成
+        leaderboard_text = "\n".join(
+            [f"{index+1}位: <@{user_id}> - {count}個" for index, (user_id, count) in enumerate(leaderboard)]
+        )
+        await interaction.response.send_message(f"**コレクションリーダーボード:**\n{leaderboard_text}")
+
+        logging.info("Leaderboard command executed.")
+
 
 # Botの起動
 client.run(BOT_TOKEN)
