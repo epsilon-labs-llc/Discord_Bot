@@ -1,6 +1,8 @@
 import discord
 from discord.ext import tasks
 from discord import app_commands
+from discord.ui import Button, View
+from discord.errors import InteractionResponded
 import random
 import os
 from dotenv import load_dotenv
@@ -154,7 +156,7 @@ async def collect(interaction: discord.Interaction):
             remaining_hours = remaining_time.seconds // 3600  # 残り時間を時間単位で計算
             logging.info(f"User {user_id} attempted to use the daily command but needs to wait {remaining_hours} more hours.")
             await interaction.response.send_message(
-                f"デイリーコマンドはまだ使用できません。あと **{remaining_hours}時間後** に使用できます。"
+                f"デイリーコマンドはまだ使用できません。あと **{remaining_hours}時間後** に使用できます。", ephemeral=True
             )
             return
 
@@ -184,9 +186,9 @@ async def collect(interaction: discord.Interaction):
     if os.path.exists(file_path):
         file = discord.File(file_path, filename="image.png")
         embed.set_thumbnail(url="attachment://image.png")
-        await interaction.response.send_message(file=file, embed=embed)
+        await interaction.response.send_message(file=file, embed=embed, ephemeral=True)
     else:
-        await interaction.response.send_message(f"画像が見つかりませんでした。")
+        await interaction.response.send_message(f"画像が見つかりませんでした。", ephemeral=True)
 
     logging.info(f"User {user_id} collected {character['name']} ({rarity}) on day {streak}")
 
@@ -211,12 +213,12 @@ async def collection(interaction: discord.Interaction, action: str):
             if user_collection[rarity]:
                 collection_text += f"\n**{rarity_dict[rarity]}**\n"
                 for character in user_collection[rarity]:
-                    collection_text += f"{character['name']}: {character['quantity']}個\n"
+                    collection_text += f"{character['name']}: {character['quantity']}体\n"
 
         if not collection_text:
-            await interaction.response.send_message("あなたのコレクションは空です。デイリーコマンドでキャラクターを集めましょう！")
+            await interaction.response.send_message("あなたのコレクションは空です。デイリーコマンドでキャラクターを集めましょう！", ephemeral=True)
         else:
-            await interaction.response.send_message(f"**あなたのコレクション:**\n{collection_text}")
+            await interaction.response.send_message(f"**あなたのコレクション:**\n{collection_text}", ephemeral=True)
 
         logging.info(f"User {user_id} checked their collection.")
     
@@ -236,12 +238,162 @@ async def collection(interaction: discord.Interaction, action: str):
 
         # 表示用テキスト生成
         leaderboard_text = "\n".join(
-            [f"{index+1}位: <@{user_id}> - スーパーレア: {total[0]}個, レア: {total[1]}個, ノーマル: {total[2]}個"
+            [f"{index+1}位: <@{user_id}> - スーパーレア: {total[0]}体, レア: {total[1]}体, ノーマル: {total[2]}体"
              for index, (user_id, total) in enumerate(leaderboard)]
         )
-        await interaction.response.send_message(f"**コレクションリーダーボード:**\n{leaderboard_text}")
+        await interaction.response.send_message(f"**コレクション リーダーボード:**\n{leaderboard_text}")
 
         logging.info("Leaderboard command executed.")
+
+# コマンド: /トレード
+@tree.command(name="トレード", description="他のユーザーとアイテムを交換します")
+async def trade(interaction: discord.Interaction, target: discord.User, あげるアイテム: str, もらうアイテム: str):
+    user_id = str(interaction.user.id)
+    target_id = str(target.id)
+
+    # ユーザーとターゲットのコレクションを取得
+    user_collection = data["collections"].get(user_id, {})
+    target_collection = data["collections"].get(target_id, {})
+
+    # ユーザーとターゲットのコレクションが存在するかを確認
+    if not user_collection:
+        await interaction.response.send_message("あなたのコレクションは空です。", ephemeral=True)
+        return
+
+    if not target_collection:
+        await interaction.response.send_message("ターゲットのコレクションは空です。", ephemeral=True)
+        return
+
+    # あげるアイテムともらうアイテムがコレクションに存在するか確認
+    user_has_item = False
+    target_has_item = False
+
+    # ユーザーのコレクション内であげるアイテムを探す
+    for category in ["normal", "rare", "super_rare"]:
+        for item in user_collection.get(category, []):
+            if item["name"] == あげるアイテム:
+                user_has_item = True
+                break
+
+    # ターゲットのコレクション内でもらうアイテムを探す
+    for category in ["normal", "rare", "super_rare"]:
+        for item in target_collection.get(category, []):
+            if item["name"] == もらうアイテム:
+                target_has_item = True
+                break
+
+    # アイテムがコレクションに存在しない場合
+    if not user_has_item:
+        await interaction.response.send_message(f"指定されたアイテム `{あげるアイテム}` は、あなたのコレクションに存在しません。", ephemeral=True)
+        return
+
+    if not target_has_item:
+        await interaction.response.send_message(f"指定されたアイテム `{もらうアイテム}` は、ターゲットのコレクションに存在しません。", ephemeral=True)
+        return
+    
+    # トレード確認メッセージ
+    confirm_message = f"あなたは {target.mention} とアイテム `{あげるアイテム}` と `{もらうアイテム}` を交換しようとしています。トレードを承諾しますか？"
+
+    # ボタンを作成
+    accept_button = Button(label="承諾", style=discord.ButtonStyle.green)
+    reject_button = Button(label="却下", style=discord.ButtonStyle.red)
+
+    # 状態を追跡する変数
+    trade_accepted_by_user = False
+    trade_accepted_by_target = False
+
+    # 承諾ボタンのコールバック
+    async def accept_callback(interaction: discord.Interaction):
+        nonlocal trade_accepted_by_user, trade_accepted_by_target
+        if interaction.user == interaction.guild.owner:  # ユーザーが承諾した場合
+            trade_accepted_by_user = True
+        elif interaction.user == target:  # ターゲットが承諾した場合
+            trade_accepted_by_target = True
+
+        try:
+            if trade_accepted_by_user and trade_accepted_by_target:
+                # ユーザーのコレクションを検索し、指定されたアイテムを見つける
+                item_found = False
+                for category in ["normal", "rare", "super_rare"]:
+                    for item in user_collection.get(category, []):
+                        if item["name"] == あげるアイテム:
+                            item_found = True
+                            # アイテムの数量を減らす
+                            item["quantity"] -= 1
+                            # アイテムの数量が0になった場合、アイテムをコレクションから削除する
+                            if item["quantity"] == 0:
+                                user_collection[category].remove(item)
+                            break
+
+                # アイテムが見つからない場合、エラーメッセージを表示
+                if not item_found:
+                    await interaction.response.send_message(f"指定されたアイテム `{あげるアイテム}` は、あなたのコレクションに存在しません。", ephemeral=True)
+                    return
+
+                # ターゲットのコレクションを更新（アイテムを追加）
+                item_found = False
+                for category in ["normal", "rare", "super_rare"]:
+                    for item in target_collection.get(category, []):
+                        if item["name"] == もらうアイテム:
+                            item_found = True
+                            # アイテムの数量を減らす
+                            item["quantity"] -= 1
+                            if item["quantity"] == 0:
+                                target_collection[category].remove(item)
+                            break
+                if not item_found:
+                    await interaction.response.send_message(f"ターゲットのアイテム `{もらうアイテム}` が見つかりませんでした。", ephemeral=True)
+                    return
+
+                # アイテム交換処理完了メッセージ
+                save_data()
+
+                # ボタン無効化
+                accept_button.disabled = True
+                reject_button.disabled = True
+                await interaction.edit_message(view=view)
+
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        f"{interaction.user.mention} と {target.mention} がアイテムを交換しました！\n"
+                        f"{interaction.user.mention} は **{もらうアイテム}** を獲得し、**{あげるアイテム}** を失いました。\n"
+                        f"{target.mention} は **{あげるアイテム}** を獲得し、**{もらうアイテム}** を失いました。"
+                    )
+
+                logging.info(f"Trade completed between {interaction.user.id} and {target.id}: {あげるアイテム} <-> {もらうアイテム}")
+            else:
+                await interaction.response.send_message(f"{interaction.user.mention} はトレードを承諾しました。", ephemeral=True)
+
+        except InteractionResponded:
+            # すでに応答が完了している場合の処理
+            logging.info("Interaction already responded, no further response will be sent.")
+
+    # 却下ボタンのコールバック
+    async def reject_callback(interaction: discord.Interaction):
+        nonlocal trade_accepted_by_user, trade_accepted_by_target
+        if interaction.user == interaction.guild.owner:
+            trade_accepted_by_user = False
+        elif interaction.user == target:
+            trade_accepted_by_target = False
+
+        await interaction.response.send_message(f"{interaction.user.mention} はトレードを却下しました。", ephemeral=True)
+
+        # ボタンを無効化
+        accept_button.disabled = True
+        reject_button.disabled = True
+        await interaction.edit_message(view=view)
+
+    # ボタンのコールバックを設定
+    accept_button.callback = accept_callback
+    reject_button.callback = reject_callback
+
+    # ビューを作成してボタンを追加
+    view = View()
+    view.add_item(accept_button)
+    view.add_item(reject_button)
+
+    # トレード確認メッセージを送信
+    await interaction.response.send_message(confirm_message, view=view)
 
 # Botの起動
 client.run(BOT_TOKEN)
